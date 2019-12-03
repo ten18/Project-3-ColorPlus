@@ -12,18 +12,28 @@ public class GameController : MonoBehaviour
     public static GameObject[,] grid;
     public GameObject nextCube;
     GameObject cubeSelected;
-    public static GameObject coloredCube;
     public static int activeCubeX, activeCubeY;
+    GameObject activeCubeObject;
     Color[] colorList = { Color.blue, Color.green, Color.red, Color.yellow, Color.magenta };
-    public Color color;
+    Color color;
     public int gridLength, gridHeight;
     public float gridSpacing;
     public Text timerText;
+    public Text scoreText;
     Vector3 cubePos;
     Vector3 nextCubePos;
-    public int gridRow; // keeps track of what row to place the cube in
-    public GameObject[] row1, row2, row3, row4, row5;
-    public bool row1Full, row2Full, row3Full, row4Full, row5Full;
+    int gridRow; // keeps track of what row to place the cube in
+    GameObject[] row1, row2, row3, row4, row5;
+    bool row1Full, row2Full, row3Full, row4Full, row5Full;
+    public int score;
+    public int pointsSameColorPlus, pointsDiffColorPlus;
+    public int penalty;
+    GameObject centerCube, rightCube, leftCube, topCube, bottomCube;
+    Color centerColor, rightColor, leftColor, topColor, bottomColor;
+    bool sameColorPlus, diffColorPlus;
+    string gameOverStatus;
+    bool keyPressFault = false; // will turn true if a player tries to place a cube in a full row, resulting in losing the game
+    bool outOfRoom = false; // will turn true if a black cube should be made but there is no more room for black cubes, resulting in the game ending
 
     void GenNextCube()
     {
@@ -42,7 +52,6 @@ public class GameController : MonoBehaviour
                 cubeSelected.GetComponent<Renderer>().material.color = color;
                 Destroy(nextCube);
                 nextCube = null;
-                cubeSelected = coloredCube;
             }
             else
             {
@@ -58,21 +67,41 @@ public class GameController : MonoBehaviour
         {
             gridRow = 4;
         }
+        else if (Input.GetKeyDown(KeyCode.Alpha1) && row1Full == true)
+        {
+            keyPressFault = true;
+        }
         else if (Input.GetKeyDown(KeyCode.Alpha2) && row2Full == false)
         {
             gridRow = 3;
+        }
+        else if (Input.GetKeyDown(KeyCode.Alpha2) && row2Full == true)
+        {
+            keyPressFault = true;
         }
         else if (Input.GetKeyDown(KeyCode.Alpha3) && row3Full == false)
         {
             gridRow = 2;
         }
+        else if (Input.GetKeyDown(KeyCode.Alpha3) && row3Full == true)
+        {
+            keyPressFault = true;
+        }
         else if (Input.GetKeyDown(KeyCode.Alpha4) && row4Full == false)
         {
             gridRow = 1;
         }
+        else if (Input.GetKeyDown(KeyCode.Alpha4) && row4Full == true)
+        {
+            keyPressFault = true;
+        }
         else if (Input.GetKeyDown(KeyCode.Alpha5) && row5Full == false)
         {
             gridRow = 0;
+        }
+        else if (Input.GetKeyDown(KeyCode.Alpha5) && row5Full == true)
+        {
+            keyPressFault = true;
         }
     }
 
@@ -123,14 +152,151 @@ public class GameController : MonoBehaviour
 
     void MakeCubeBlack()
     {
-        cubeSelected = grid[Random.Range(0, gridLength), Random.Range(0, gridHeight)];
-        if (cubeSelected.GetComponent<Renderer>().material.color == Color.white)
+        try {
+            cubeSelected = grid[Random.Range(0, gridLength), Random.Range(0, gridHeight)];
+            if (cubeSelected.GetComponent<Renderer>().material.color == Color.white)
+            {
+                cubeSelected.GetComponent<Renderer>().material.color = Color.black;
+            }
+            else
+            {
+                MakeCubeBlack();
+            }
+        }
+        catch
         {
-            cubeSelected.GetComponent<Renderer>().material.color = Color.black;
+            outOfRoom = true;
+        }
+        
+    }
+
+    void CheckSameColorPlus()
+    {
+        for (int y = 1; y < gridHeight-1; y++)
+        {
+            for (int x = 1; x < gridLength-1; x++)
+            {
+                centerCube = grid[x, y];
+                centerColor = centerCube.GetComponent<Renderer>().material.color;
+                rightCube = grid[x + 1, y];
+                rightColor = rightCube.GetComponent<Renderer>().material.color;
+                leftCube = grid[x - 1, y];
+                leftColor = leftCube.GetComponent<Renderer>().material.color;
+                topCube = grid[x, y + 1];
+                topColor = topCube.GetComponent<Renderer>().material.color;
+                bottomCube = grid[x, y - 1];
+                bottomColor = bottomCube.GetComponent<Renderer>().material.color;
+                if (centerColor != Color.white && centerColor != Color.black) // only check colored cubes
+                {
+                    // if all cubes in + match in color...
+                    if (centerColor == rightColor && centerColor == leftColor && centerColor == topColor && centerColor == bottomColor)
+                    {
+                        // turn all cubes in the + shape black
+                        centerCube.GetComponent<Renderer>().material.color = Color.black;
+                        rightCube.GetComponent<Renderer>().material.color = Color.black;
+                        leftCube.GetComponent<Renderer>().material.color = Color.black;
+                        topCube.GetComponent<Renderer>().material.color = Color.black;
+                        bottomCube.GetComponent<Renderer>().material.color = Color.black;
+                        // also deactivate the active cube if it is part of the + shape
+                        if (activeCubeObject == centerCube || activeCubeObject == rightCube || activeCubeObject == leftCube || activeCubeObject == topCube || activeCubeObject == bottomCube)
+                        {
+                            if (CubeController.activeCube == true)
+                            {
+                                CubeController.activeCube = false;
+                                activeCubeObject.transform.localScale -= new Vector3(CubeController.scaleX, CubeController.scaleY, CubeController.scaleZ);
+                            }
+                        }
+                        sameColorPlus = true;
+                    }
+                }
+            }
+        }
+    }
+
+    void CheckDiffColorPlus()
+    {
+        for (int y = 1; y < gridHeight - 1; y++)
+        {
+            for (int x = 1; x < gridLength - 1; x++)
+            {
+                centerCube = grid[x, y];
+                centerColor = centerCube.GetComponent<Renderer>().material.color;
+                rightCube = grid[x + 1, y];
+                rightColor = rightCube.GetComponent<Renderer>().material.color;
+                leftCube = grid[x - 1, y];
+                leftColor = leftCube.GetComponent<Renderer>().material.color;
+                topCube = grid[x, y + 1];
+                topColor = topCube.GetComponent<Renderer>().material.color;
+                bottomCube = grid[x, y - 1];
+                bottomColor = bottomCube.GetComponent<Renderer>().material.color; // only check colored cubes
+                if (centerColor != Color.white && centerColor != Color.black)
+                {
+                    // the next 4 if statements are all to check if every cube in the + is of a unique color (excluding white and black)
+                    if (centerColor != rightColor && centerColor != leftColor && centerColor != topColor && centerColor != bottomColor)
+                    {
+                        if (rightColor != leftColor && rightColor != topColor && rightColor != bottomColor && rightColor != Color.white && rightColor != Color.black)
+                        {
+                            if (leftColor != topColor && leftColor != bottomColor && leftColor != Color.white && leftColor != Color.black)
+                            {
+                                if (topColor != bottomColor && topColor != Color.white && topColor != Color.black && bottomColor != Color.white && bottomColor != Color.black)
+                                {
+                                    // turn all cubes in the + shape black
+                                    centerCube.GetComponent<Renderer>().material.color = Color.black;
+                                    rightCube.GetComponent<Renderer>().material.color = Color.black;
+                                    leftCube.GetComponent<Renderer>().material.color = Color.black;
+                                    topCube.GetComponent<Renderer>().material.color = Color.black;
+                                    bottomCube.GetComponent<Renderer>().material.color = Color.black;
+                                    // also deactivate the active cube if it is part of the + shape
+                                    if (activeCubeObject == centerCube || activeCubeObject == rightCube || activeCubeObject == leftCube || activeCubeObject == topCube || activeCubeObject == bottomCube)
+                                    {
+                                        if (CubeController.activeCube == true)
+                                        {
+                                            CubeController.activeCube = false;
+                                            activeCubeObject.transform.localScale -= new Vector3(CubeController.scaleX, CubeController.scaleY, CubeController.scaleZ);
+                                        }
+                                    }
+                                    diffColorPlus = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    bool IsGameOver()
+    {
+        if (timeLeft <= 0)
+        {
+            if (score > 0)
+            {
+                gameOverStatus = "You Win!";
+                timerText.color = Color.green;
+            }
+            return true;
+        }
+        else if (keyPressFault == true)
+        {
+            timerText.color = Color.red;
+            return true;
+        }
+        else if (outOfRoom == true)
+        {
+            if (score > 0)
+            {
+                gameOverStatus = "You Win!";
+                timerText.color = Color.green;
+            }
+            else
+            {
+                timerText.color = Color.red;
+            }
+            return true;
         }
         else
         {
-            MakeCubeBlack();
+            return false;
         }
     }
 
@@ -162,20 +328,45 @@ public class GameController : MonoBehaviour
         row3 = new GameObject[] {grid[0,2], grid[1,2], grid[2,2], grid[3,2], grid[4,2], grid[5,2], grid[6,2], grid[7,2]};
         row4 = new GameObject[] {grid[0,1], grid[1,1], grid[2,1], grid[3,1], grid[4,1], grid[5,1], grid[6,1], grid[7,1]};
         row5 = new GameObject[] {grid[0,0], grid[1,0], grid[2,0], grid[3,0], grid[4,0], grid[5,0], grid[6,0], grid[7,0] };
+        score = 0;
+        pointsSameColorPlus = 10;
+        pointsDiffColorPlus = 5;
+        penalty = 1;
+        gameOverStatus = "You Lose"; // this will change if the players meet the criteria for winning
     }
 
     // Update is called once per frame
     void Update()
     {
-        if (timeLeft <= 0)
+        if (sameColorPlus == true)
         {
-            timerText.text = "Game Over";
+            score += pointsSameColorPlus;
+        }
+        sameColorPlus = false;
+        if (diffColorPlus == true)
+        {
+            score += pointsDiffColorPlus;
+        }
+        diffColorPlus = false;
+        scoreText.text = "Score: " + score;
+        if (timeLeft <= 10 && IsGameOver() == false)
+        {
+            timerText.color = Color.red;
+        }
+        if (IsGameOver() == true)
+        {
+            Destroy(nextCube);
+            timerText.text = gameOverStatus;
         }
         else
         {
+            activeCubeObject = grid[activeCubeX, activeCubeY];
             CheckForKeyPress();
             PlaceColorCube();
             CheckForFullRows();
+            CheckSameColorPlus();
+            CheckDiffColorPlus();
+            IsGameOver();
             if (timeLeft > 0)
             {
                 timeLeft -= Time.deltaTime;
@@ -188,8 +379,13 @@ public class GameController : MonoBehaviour
                 {
                     Destroy(nextCube);
                     MakeCubeBlack();
+                    if (score > 0)
+                    {
+                        score -= penalty;
+                    }
                 }
                 GenNextCube();
+                print("Score: " + score);
             }
         }
     }
